@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Master HC PRCI Timeline Editor</title>
+<style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; background-color: #f4f7f6; color: #333; }
+    h2 { color: #2c3e50; border-bottom: 3px solid #4682B4; padding-bottom: 10px; }
+    .header-box { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 20px; line-height: 2.5; }
+    .input-group { display: inline-block; margin-right: 20px; vertical-align: middle; }
+    label { font-weight: bold; margin-right: 5px; color: #4682B4; }
+    input { border: 1px solid #ccc; padding: 6px; border-radius: 4px; }
+    .calc-summary { display: block; margin-top: 10px; padding: 15px; background: #e8f4f8; border-radius: 5px; border-left: 5px solid #4682B4; font-size: 0.95em; line-height: 1.6; }
+    .controls { margin-bottom: 15px; background: #eef2f3; padding: 10px; border-radius: 6px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    button { padding: 8px 15px; cursor: pointer; border: none; border-radius: 4px; font-weight: bold; transition: 0.3s; }
+    .btn-gen { background: #4682B4; color: white; }
+    .btn-add { background: #6c757d; color: white; }
+    .btn-col { background: #8e44ad; color: white; } 
+    .btn-exp { background: #27ae60; color: white; }
+    .btn-undo { background: #f39c12; color: white; }
+    .btn-action-del { background: #ff7675; color: white; padding: 2px 6px; font-size: 10px; margin-bottom: 2px; display: block; width: 100%; }
+    .btn-action-ins { background: #55efc4; color: #2d3436; padding: 2px 6px; font-size: 10px; display: block; width: 100%; }
+    .table-container { width: 100%; overflow-x: auto; background: white; border: 1px solid #ddd; border-radius: 4px; }
+    table { border-collapse: collapse; min-width: 100%; font-size: 11px; table-layout: fixed; }
+    th { background: #4682B4; color: white; padding: 10px; border: 1px solid #ddd; position: relative; }
+    td { border: 1px solid #ddd; padding: 6px; vertical-align: middle; position: relative; }
+    tr:nth-child(even) { background: #f9f9f9; }
+    .col-del-btn { position: absolute; top: 2px; right: 2px; background: rgba(0,0,0,0.2); color: white; border-radius: 50%; width: 14px; height: 14px; line-height: 12px; text-align: center; font-size: 10px; cursor: pointer; }
+    .col-del-btn:hover { background: #e74c3c; }
+    .date-edit-container { display: flex; align-items: center; position: relative; }
+    .date-text { width: 100%; border: none; background: transparent; font-size: inherit; cursor: text; }
+    .date-picker-hidden { position: absolute; right: 0; top: 0; opacity: 0; width: 25px; height: 100%; cursor: pointer; }
+    .internal-col { background: #fff1f0 !important; color: #c0392b; font-style: italic; border-left: 2px solid #e74c3c; font-size: 10px; }
+    .seq-cell { font-weight: bold; text-align: center; }
+    .switch-container { display: flex; align-items: center; margin-left: auto; background: #fff; padding: 5px 15px; border-radius: 20px; border: 1px solid #ddd; }
+    .switch { position: relative; display: inline-block; width: 34px; height: 20px; margin-right: 10px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 20px; }
+    .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+    input:checked + .slider { background-color: #e74c3c; }
+    input:checked + .slider:before { transform: translateX(14px); }
+    .is-finalized .btn-gen, .is-finalized .btn-add, .is-finalized .btn-col, .is-finalized .btn-undo, .is-finalized .action-col, .is-finalized .calendar-icon, .is-finalized .col-del-btn, .is-finalized .internal-col { display: none !important; }
+    .is-finalized table { background-color: #f2f2f2; }
+    .is-finalized input { border-color: transparent; background: none; font-weight: bold; }
+</style>
+</head>
+<body id="mainBody">
+
+<h2>HC PRCI Redaction & Anonymization Master Timeline</h2>
+
+<div class="header-box" id="headerInputs">
+    <div class="input-group"><label>Client Name:</label> <input type="text" id="clientName" placeholder="Client Name"></div>
+    <div class="input-group"><label>Project Start Date:</label> <input type="date" id="startDate"></div>
+    <div class="input-group"><label>NOC Date:</label> <input type="date" id="nocDate"></div>
+    <div class="input-group"><label>Total Pages:</label> <input type="number" id="totalPages" value="5000" oninput="updateHeaderCalc()" style="width:80px;"></div>
+    <div class="input-group"><label>Staff Count:</label> <input type="number" id="numPersons" value="2" oninput="updateHeaderCalc()" style="width:60px;"></div>
+    <div class="calc-summary" id="headerCalc"></div>
+    <button class="btn-gen" style="margin-top:15px;" onclick="generateTimeline()">Generate</button>
+</div>
+
+<div class="controls">
+    <button class="btn-undo" id="undoBtn" onclick="undo()" disabled>Undo</button>
+    <button class="btn-add" onclick="addRowAtEnd()">+ Row at End</button>
+    <button class="btn-col" onclick="addColumn()">+ Column</button>
+    <button class="btn-exp" onclick="exportToExcel()">Export to Excel</button>
+    <div class="switch-container">
+        <label class="switch"><input type="checkbox" id="lockToggle" onchange="toggleLock()"><span class="slider"></span></label>
+        <span id="lockStatusLabel" style="font-weight:bold; font-size: 12px; color: #7f8c8d;">EDIT MODE</span>
+    </div>
+</div>
+
+<div class="table-container">
+    <table id="timelineTable">
+        <thead>
+            <tr id="headerRow">
+                <th style="width: 40px;">Seq</th>
+                <th style="width: 120px;">Task Categories <span class="col-del-btn" onclick="deleteColumn(this)">x</span></th>
+                <th style="width: 250px;">Tasks <span class="col-del-btn" onclick="deleteColumn(this)">x</span></th>
+                <th style="width: 110px;">Start Date <span class="col-del-btn" onclick="deleteColumn(this)">x</span></th>
+                <th style="width: 110px;">Due Date <span class="col-del-btn" onclick="deleteColumn(this)">x</span></th>
+                <th style="width: 100px;">Responsible <span class="col-del-btn" onclick="deleteColumn(this)">x</span></th>
+                <th style="width: 180px;">Notes/Deliverables <span class="col-del-btn" onclick="deleteColumn(this)">x</span></th>
+                <th class="internal-col" style="width: 300px;">NOTES (INTERNAL USE ONLY) - Please delete this column before sharing to clients. <span class="col-del-btn" onclick="deleteColumn(this)">x</span></th>
+                <th class="action-col" style="width: 70px;">Action</th>
+            </tr>
+        </thead>
+        <tbody id="tableBody">
+            <tr><td colspan="9" style="text-align:center; padding:40px; color:#999;">Ready to generate 43 tasks. Click Generate.</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<script>
+let historyStack = [];
+
+const tasksData = [
+    {s:1, c:"Collation", t:"Provide standard datasets", d:5, type:"work", dep:null, r:"Sponsor", n:" ", i:" "},
+    {s:2, c:"Collation", t:"Provide documents to RLS", d:5, type:"work", dep:null, r:"Sponsor", n:"Check if documents need splitting (e.g. CSRs and PK reports  less than 1,500 pages).", i:" "},
+    {s:3, c:"Collation", t:"Upload to RLS repository", d:5, type:"work", dep:null, r:"RLS", n:" ", i:" "},
+    {s:4, c:"Definition", t:"Project Kickoff Meeting", d:9, type:"work", dep:null, r:"RLS/Sponsor", n:" ", i:" "},
+    {s:5, c:"Definition", t:"Test Sample (10%) Documents for Issues", d:10, type:"work", dep:2, r:"RLS", n:" ", i:" "},
+    {s:6, c:"Definition", t:"Review package for OOS", d:9, type:"work", dep:2, r:"RLS", n:"OOS Summary.", i:" "},
+    {s:7, c:"Definition", t:"Review OOS summary", d:9, type:"work", dep:2, r:"Sponsor", n:" ", i:" "},
+    {s:8, c:"Definition", t:"Finalise OOS summary", d:9, type:"work", dep:2, r:"Sponsor", n:"OOS Summary.", i:"Align timeline for creating batches, finalizing out-of-scope, and identifiying initial parameters, variables, and patterns (same timeframe)."},
+    {s:9, c:"Definition", t:"Create document list", d:9, type:"work", dep:2, r:"RLS", n:"Document List.", i:"Align timeline for creating batches, finalizing out-of-scope, and identifying initial parameters, variables, and patterns (same timeframe)."},
+    {s:10, c:"Definition", t:"Mark Out of Scope content", d:9, type:"work", dep:2, r:"RLS", n:" ", i:"Usually for a week after the Definition task is done."},
+    {s:11, c:"Definition", t:"Identify CBI and provide CBI list to RLS", d:20, type:"work", dep:null, r:"Sponsor", n:" ", i:"Timeline can be aligned with the redaction process so usual due date to give to client is the due date for redaction. This way, we can start redacting the CBI during QC. If client is requesting for extension, may opt to give until before the anonymization QC of batch 1 documents starts."},
+    {s:12, c:"Risk Assessment", t:"Research and model similar trials", d:7, type:"cal", dep:1, r:"RLS", n:" ", i:"Can be done once the documents and datasets are available."},
+    {s:13, c:"Risk Assessment", t:"Review similar trials modeling output", d:7, type:"cal", dep:1, r:"RLS", n:" ", i:" "},
+    {s:14, c:"Risk Assessment", t:"Perform quantitative risk assessment", d:7, type:"cal", dep:1, r:"RLS", n:" ", i:"No need to include in the project plan shared with sponsor."},
+    {s:15, c:"Risk Assessment", t:"QC risk assessment output", d:7, type:"cal", dep:12, r:"RLS", n:" ", i:"Dependency on Research and model similar trials and trial characteristics/study overview."},
+    {s:16, c:"Risk Assessment", t:"Review rules and output", d:7, type:"cal", dep:15, r:"RLS", n:"Risk Assessment Options Discuss meeting date for review of Anonymization rules.", i:" "},
+    {s:17, c:"Risk Assessment", t:"Prepare QC Reference / AE modeling", d:7, type:"cal", dep:15, r:"RLS/Sponsor", n:"QC Reference File and AE Modeling Sheet.", i:" "},
+    {s:18, c:"Risk Assessment", t:"Finalize rules and output", d:7, type:"cal", dep:15, r:"RLS", n:"Final Risk Assessment Options.", i:"Must be completed before the anonymization process."},
+    {s:19, c:"Risk Assessment", t:"Create and QC lookups", d:7, type:"cal", dep:16, r:"RLS", n:" ", i:"Can be done by batch once anonymization rules are finalized and redaction of documents are done."},
+    {s:20, c:"Document Processing", t:"Marking and Anonymization (PI)", d:0, type:"dynamic", dep:8, r:"RLS", n:" ", i:"Dependency on Definition. Avoid starting the redaction before Definition is done to avoid working on the OOS pages."},
+    {s:21, c:"Document Processing", t:"QC (PI)", d:5, type:"work", dep:20, r:"RLS", n:" ", i:" "},
+    {s:22, c:"Document Processing", t:"Consistency Review (PI)", d:5, type:"work", dep:21, r:"RLS", n:" ", i:" "},
+    {s:23, c:"Document Processing", t:"Marking and QC (CBI)", d:5, type:"work", dep:22, r:"RLS", n:" ", i:" "},
+    {s:24, c:"Document Processing", t:"Anonymization Report Preparation", d:5, type:"work", dep:23, r:"RLS", n:" ", i:" "},
+    {s:25, c:"Proposal Package Finalization", t:"CBI Control Sheet Preparation", d:5, type:"work", dep:23, r:"RLS", n:" ", i:" "},
+    {s:26, c:"Proposal Package Finalization", t:"Submission of Draft Proposal Package", d:1, type:"work", dep:25, r:"RLS", n:"Draft Proposal Package, Master lookups, Batch Report, and Anonymization Report.", i:" "},
+    {s:27, c:"Proposal Package Finalization", t:"Review of Draft Proposal Package", d:14, type:"cal", dep:26, r:"Sponsor", n:" ", i:" "},
+    {s:28, c:"Proposal Package Finalization", t:"Anonymization Report Review", d:14, type:"cal", dep:26, r:"Sponsor", n:" ", i:" "},
+    {s:29, c:"Proposal Package Finalization", t:"CBI Control Sheet Review", d:14, type:"cal", dep:26, r:"Sponsor", n:" ", i:" "},
+    {s:30, c:"Proposal Package Finalization", t:"Finalization of Package", d:14, type:"cal", dep:29, r:"RLS", n:" ", i:" "},
+    {s:31, c:"Proposal Package Finalization", t:"Sponsor's Internal Preparation", d:14, type:"cal", dep:30, r:"Sponsor", n:" ", i:"If possible, give the sponsors at least 15 days to prepare the package for submission."},
+    {s:32, c:"Project Management", t:"Notice of Compliance (NOC)", d:0, type:"noc", dep:null, r:"HC", n:"Day 0.", i:"To be shared by client."},
+    {s:33, c:"Project Management", t:"Notification email from HC", d:1, type:"cal", dep:32, r:"HC", n:"After issuance of NOC, HC will provide the scoping list along with other reference documents such as the proposed redaction control sheet and anonymization report form.", i:" "},
+    {s:34, c:"Project Management", t:"Sponsor scoping review", d:1, type:"cal", dep:33, r:"Sponsor", n:" ", i:"This usually does not happen until the NOC is received."},
+    {s:35, c:"Project Management", t:"Process Initiation Meeting (PIM)", d:1, type:"cal", dep:34, r:"HC", n:"Discuss timeline.", i:" "},
+    {s:36, c:"Document Processing", t:"Processing Additional Documents", d:5, type:"work", dep:35, r:"RLS", n:"A PIM may be requested within the period of time 120 calendar days prior to the final regulatory decision, and up to 20 calendar days following the final regulatory decision.", i:" "},
+    {s:37, c:"Final Review for Publishing", t:"Submit Draft Proposal Package to HC", d:0, type:"milestone", dep:32, r:"Sponsor", n:"Proposal package, batch report, CBI/CCI control sheet, and anonymization report.", i:"60 calendar days from NOC for HC submission."},
+    {s:38, c:"Final Review for Publishing", t:"Feedback From HC", d:30, type:"cal", dep:37, r:"HC", n:" ", i:"HC Review - 30 calendar days from HC submission."},
+    {s:39, c:"Final Review for Publishing", t:"Review and Updates Based on HC", d:15, type:"cal", dep:38, r:"Sponsor/RLS", n:"Revised/final proposal package to be submitted to client by (Date: TBD).", i:"Regulatory Feedback Incorporation, and Final Package Preparation and Submission - 25 calendar days total."},
+    {s:40, c:"Final Review for Publishing", t:"Submission of Final Proposal Package", d:0, type:"cal", dep:39, r:"Sponsor", n:" ", i:" "},
+    {s:41, c:"Final Review for Publishing", t:"HC re-assessment response", d:5, type:"cal", dep:40, r:"HC", n:" ", i:" "},
+    {s:42, c:"Final Review for Publishing", t:"Final Burned Package Preparation", d:5, type:"cal", dep:41, r:"RLS", n:"Final Package (burned) to be submitted to client by (Date: TBD).", i:" "},
+    {s:43, c:"Final Review for Publishing", t:"Final Burned Package Submission", d:0, type:"cal", dep:42, r:"Sponsor", n:" ", i:"Publishing of Documents - 5 calendar days from receipt of final package for HC submission."}
+];
+
+function isWeekend(date) { const day = date.getDay(); return day === 0 || day === 6; }
+
+function addBusinessDays(startDate, days) {
+    let result = new Date(startDate);
+    if (days <= 0) return result;
+    let added = 0;
+    while (added < (days - 1)) {
+        result.setDate(result.getDate() + 1);
+        if (!isWeekend(result)) added++;
+    }
+    return result;
+}
+
+function addCalendarDays(startDate, days) {
+    let result = new Date(startDate);
+    if (days > 0) result.setDate(result.getDate() + (days - 1));
+    return result;
+}
+
+function getNextStart(prevDueDate) {
+    let result = new Date(prevDueDate);
+    result.setDate(result.getDate() + 1);
+    while (isWeekend(result)) result.setDate(result.getDate() + 1);
+    return result;
+}
+
+function generateTimeline() {
+    saveState();
+    const startVal = document.getElementById("startDate").value;
+    const nocVal = document.getElementById("nocDate").value;
+    const clientName = document.getElementById("clientName").value || "Client";
+    if (!startVal || !nocVal) return alert("Select Start & NOC dates first.");
+
+    const startDateInput = new Date(startVal + "T00:00:00");
+    const nocDate = new Date(nocVal + "T00:00:00");
+    const pgs = parseInt(document.getElementById("totalPages").value) || 0;
+    const ppl = parseInt(document.getElementById("numPersons").value) || 1;
+    const procDays = Math.ceil(pgs / (799 * ppl));
+
+    const tbody = document.getElementById("tableBody");
+    tbody.innerHTML = "";
+    let calc = {};
+
+    tasksData.forEach((task) => {
+        let sDate, dDate;
+        if (task.type === "noc") { sDate = dDate = nocDate; }
+        else if (task.type === "milestone") { sDate = dDate = new Date(nocDate.getTime() + (60 * 86400000)); }
+        else if (task.dep === null) {
+            sDate = new Date(startDateInput);
+            while(isWeekend(sDate)) sDate.setDate(sDate.getDate() + 1);
+            dDate = (task.type === "work") ? addBusinessDays(sDate, task.d) : addCalendarDays(sDate, task.d);
+        } else {
+            const depTask = calc[task.dep];
+            sDate = getNextStart(depTask.due);
+            let dur = (task.type === "dynamic") ? procDays : task.d;
+            dDate = (task.type === "work" || task.type === "dynamic") ? addBusinessDays(sDate, dur) : addCalendarDays(sDate, dur);
+        }
+        calc[task.s] = { start: sDate, due: dDate };
+
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td class="seq-cell">${task.s}</td>
+            <td contenteditable="true">${task.c}</td>
+            <td contenteditable="true">${task.t}</td>
+            <td>${createDateCellHtml(sDate)}</td>
+            <td>${createDateCellHtml(dDate)}</td>
+            <td contenteditable="true">${task.r.replace(/Sponsor/g, clientName)}</td>
+            <td contenteditable="true">${task.n}</td>
+            <td class="internal-col" contenteditable="true">${task.i}</td>
+            <td class="action-col">
+                <button class="btn-action-del" onclick="deleteThisRow(this)">Del</button>
+                <button class="btn-action-ins" onclick="insertRowAbove(this)">+ Ins</button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function addColumn() {
+    saveState();
+    const colName = prompt("Enter Column Header Name:", "New Column");
+    if (!colName) return;
+    const headerRow = document.getElementById("headerRow");
+    const tbody = document.getElementById("tableBody");
+    const th = document.createElement("th");
+    th.style.width = "120px";
+    th.innerHTML = `${colName} <span class="col-del-btn" onclick="deleteColumn(this)">x</span>`;
+    headerRow.insertBefore(th, headerRow.lastElementChild);
+    const colIndex = th.cellIndex;
+    Array.from(tbody.rows).forEach(row => {
+        const td = document.createElement("td");
+        td.setAttribute("contenteditable", "true");
+        td.innerText = "-";
+        row.insertBefore(td, row.cells[colIndex]);
+    });
+}
+
+function deleteColumn(btn) {
+    const th = btn.parentElement;
+    const colIndex = th.cellIndex;
+    if (colIndex === 0 || th.classList.contains("action-col")) return alert("Cannot delete this column.");
+    saveState();
+    const table = document.getElementById("timelineTable");
+    Array.from(table.rows).forEach(row => { row.deleteCell(colIndex); });
+}
+
+function deleteThisRow(btn) { saveState(); btn.closest('tr').remove(); resequenceTable(); }
+function insertRowAbove(btn) { const rowIndex = btn.closest('tr').sectionRowIndex; addRowAt(rowIndex); }
+function addRowAtEnd() { addRowAt(-1); }
+
+function addRowAt(index) {
+    saveState();
+    const tbody = document.getElementById("tableBody");
+    const headerCells = document.getElementById("headerRow").cells;
+    const tr = document.createElement("tr");
+    for (let i = 0; i < headerCells.length; i++) {
+        const td = document.createElement("td");
+        if (i === 0) { td.className = "seq-cell"; }
+        else if (i === headerCells.length - 1) {
+            td.className = "action-col";
+            td.innerHTML = `<button class="btn-action-del" onclick="deleteThisRow(this)">Del</button><button class="btn-action-ins" onclick="insertRowAbove(this)">+ Ins</button>`;
+        } else if (headerCells[i].innerText.includes("Date")) {
+            td.innerHTML = createDateCellHtml(new Date());
+        } else {
+            td.setAttribute("contenteditable", "true");
+            td.innerText = "-";
+            if (headerCells[i].classList.contains("internal-col")) td.className = "internal-col";
+        }
+        tr.appendChild(td);
+    }
+    if (index === -1) tbody.appendChild(tr); else tbody.insertBefore(tr, tbody.rows[index]);
+    resequenceTable();
+}
+
+function toggleLock() {
+    const isLocked = document.getElementById("lockToggle").checked;
+    const body = document.getElementById("mainBody");
+    const label = document.getElementById("lockStatusLabel");
+    const headerInputs = document.querySelectorAll("#headerInputs input");
+    const editableCells = document.querySelectorAll("[contenteditable]");
+    if (isLocked) {
+        body.classList.add("is-finalized"); label.innerText = "FINALIZED (LOCKED)"; label.style.color = "#e74c3c";
+        headerInputs.forEach(input => input.disabled = true);
+        editableCells.forEach(cell => cell.setAttribute("contenteditable", "false"));
+    } else {
+        body.classList.remove("is-finalized"); label.innerText = "EDIT MODE"; label.style.color = "#7f8c8d";
+        headerInputs.forEach(input => input.disabled = false);
+        editableCells.forEach(cell => cell.setAttribute("contenteditable", "true"));
+    }
+}
+
+function saveState() {
+    const tableBody = document.getElementById("tableBody");
+    const headerRow = document.getElementById("headerRow");
+    historyStack.push({ body: tableBody.innerHTML, head: headerRow.innerHTML });
+    document.getElementById("undoBtn").disabled = false;
+}
+
+function undo() {
+    if (historyStack.length === 0) return;
+    const lastState = historyStack.pop();
+    document.getElementById("tableBody").innerHTML = lastState.body;
+    document.getElementById("headerRow").innerHTML = lastState.head;
+    if (historyStack.length === 0) document.getElementById("undoBtn").disabled = true;
+}
+
+function resequenceTable() {
+    const rows = document.querySelectorAll("#tableBody tr");
+    rows.forEach((row, index) => { const seqCell = row.querySelector(".seq-cell"); if (seqCell) seqCell.innerText = index + 1; });
+}
+
+function formatDisplayDate(date) {
+    if (!date || isNaN(date.getTime())) return "";
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return `${String(date.getDate()).padStart(2, '0')}-${months[date.getMonth()]}-${date.getFullYear()}`;
+}
+
+function toLocalISO(date) { const tzOffset = date.getTimezoneOffset() * 60000; return new Date(date.getTime() - tzOffset).toISOString().split('T')[0]; }
+
+function updateDateFromPicker(picker) {
+    const dateValue = new Date(picker.value + "T00:00:00");
+    picker.parentElement.querySelector('.date-text').value = formatDisplayDate(dateValue);
+}
+
+function createDateCellHtml(date) {
+    const isoDate = (date instanceof Date && !isNaN(date)) ? toLocalISO(date) : "";
+    return `<div class="date-edit-container">
+        <input type="text" class="date-text" value="${formatDisplayDate(date)}" readonly>
+        <input type="date" class="date-picker-hidden" value="${isoDate}" onchange="updateDateFromPicker(this)">
+        <span class="calendar-icon" style="font-size:14px; margin-left:5px; cursor:pointer;" onclick="this.previousElementSibling.showPicker()">📅</span>
+    </div>`;
+}
+
+function updateHeaderCalc() {
+    const pgs = parseInt(document.getElementById("totalPages").value) || 0;
+    const ppl = parseInt(document.getElementById("numPersons").value) || 1;
+    const pagesPerDay = 799; 
+    const totalDailyCapacity = ppl * pagesPerDay;
+    const daysToFinish = pgs > 0 ? Math.ceil(pgs / totalDailyCapacity) : 0;
+    document.getElementById("headerCalc").innerHTML = `
+        <strong>Calculation Summary:</strong><br>
+        • At <strong>${pagesPerDay}</strong> pages/day per associate, <strong>${ppl}</strong> staff can process <strong>${totalDailyCapacity}</strong> pages/day.<br>
+        • Total Marking Duration: <strong>${daysToFinish} working days</strong> to finish ${pgs} pages.
+    `;
+}
+
+function exportToExcel() {
+    const table = document.getElementById("timelineTable");
+    const rows = table.querySelectorAll("tr");
+    let excelContent = "<table border='1'>";
+    rows.forEach((row, rowIndex) => {
+        excelContent += "<tr>";
+        Array.from(row.cells).forEach((cell) => {
+            if (cell.classList.contains("action-col")) return;
+            if (document.getElementById("lockToggle").checked && cell.classList.contains("internal-col")) return;
+            let val = cell.querySelector(".date-text") ? cell.querySelector(".date-text").value : cell.innerText;
+            excelContent += `<td>${val}</td>`;
+        });
+        excelContent += "</tr>";
+    });
+    excelContent += "</table>";
+    const link = document.createElement("a");
+    link.href = 'data:application/vnd.ms-excel;base64,' + window.btoa(unescape(encodeURIComponent(excelContent)));
+    link.download = "HC_PRCI_Timeline.xls";
+    link.click();
+}
+
+window.onload = () => {
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById("startDate").value = today;
+    document.getElementById("nocDate").value = today;
+    updateHeaderCalc();
+};
+</script>
+</body>
+</html>
